@@ -353,6 +353,12 @@ The move(direction) function wants a cardinal direction as a string, like "up" o
 
 		// Function to handle key presses
 		function handleKeyPress(event) {
+			// Check if the active element is an input or textarea or an editable div
+			const activeElement = document.activeElement;
+			if (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA' || activeElement.isContentEditable) {
+				return; // Do nothing if an input or textarea is focused
+			}
+
 			switch (event.key) {
 				case 'w':
 				case 'W':
@@ -537,4 +543,5 @@ The move(direction) function wants a cardinal direction as a string, like "up" o
 	</script>
 </body>
 </html>
+
 
