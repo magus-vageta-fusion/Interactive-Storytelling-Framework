@@ -1,0 +1,750 @@
+<!DOCTYPE html>
+<html lang="en">
+<!--
+Interactive Storytelling Framework copyright license is Creative Commons Zero (CC0). Free to modify or use for commercial use. No attribution required.
+Game Content Variables: 
+- navigation-grid--grid-width (Listed in ":root" just below. Is called GRID_WIDTH in JavaScript.)
+- navigation-grid--grid-height (Listed in ":root" just below. Is called GRID_HEIGHT in JavaScript.)
+- areaWalls (Is found in JavaScript.)
+- rightColumnContent (Is found in JavaScript.)
+
+The left pane and the right pane for the main window are called columns instead of panes, because they are part of a table element.
+When making links in the right column for changing passages, the link should usually only refer to switchDataset(newIndex, [addState]).
+The switchDataset(newIndex, [addState]) function wants the new dataset index, and wether or not to add a new state to the history, which is true by default.
+The move(direction) function wants a cardinal direction as a string, like "up" or "right".
+
+This is the Dynamic Avatar Drawer version of this project.
+You can choose to specify height using an aspect ratio, or using raw pixels.
+The console log message: "created avatar undefined" is currently disabled.
+da.js was never changed.
+-->
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Storytelling Framework</title>
+	<script src="da.js"></script> <!-- Dynamic Avatar Drawer -->
+	<style>
+		:root {
+			/* If width and height are both 1, the map will not be displayed. (intentional) */
+			/* Define the widths for multiple datasets */
+			--navigation-grid--grid-width: 1, 1, 5; /* Example widths for datasets; can be expanded as needed */
+			
+			/* Define the heights for multiple datasets */
+			--navigation-grid--grid-height: 1, 1, 3; /* Example heights for datasets; can be expanded as needed */
+
+			--navigation-grid--cell-size: 7px;
+			/* Dynamic Avatar Drawer variables are in #player */
+		}
+		#left-column {
+			width: 25%; 
+		}
+		#right-column {
+			width: 75%; 
+		}
+		input[type="number"] {
+			color: #DDD;
+			background-color: #333;
+		}
+		.dark-button {
+			padding: 2px 5px;
+			background-color: #111;
+			color: #DDD; 
+			border: none;
+			border-radius: 5px;
+			cursor: pointer;
+			font-size: 10px;
+			font-family: 'Roboto', sans-serif;
+			font-weight: normal; 
+			white-space: nowrap;
+		}
+		.dark-button:hover {
+			background-color: #222;
+		}
+		.dark-button:disabled {
+			background-color: #111;
+			color: #666;
+			cursor: not-allowed; 
+			opacity: 0.6;
+		}
+		body {
+			margin: 0;
+			padding: 0;
+			background-color: #333;
+			color: #DDD;
+		}
+		#container-main {
+			display: flex; 
+			width: 100%;
+			height: 100vh; 
+		}
+		.column-main {
+			border: 1px solid #111;
+			padding: 3px;
+			overflow: auto; 
+		}
+		#grid {
+			display: grid;
+			width: calc((var(--navigation-grid--cell-size) + 2px) * var(--navigation-grid--grid-width));
+			margin: 4px;
+			padding: 0;
+			line-height: 0;
+		}
+		.cell {
+			width: var(--navigation-grid--cell-size);
+			height: var(--navigation-grid--cell-size);
+			background-color: lightgray;
+			display: inline-block;
+			border: 1px solid #555; 
+		}
+		.active-cell {
+			background-color: green;
+			color: white;
+		}
+		.container-centering {
+			display: flex; 
+			flex-direction: column;
+			justify-content: center;
+			align-items: center;
+		}
+		h4 {
+			display: inline-block;
+			margin: 0;
+		}
+		.bottom-spacer {
+			margin-bottom: 5px;
+		}
+		.top-spacer {
+			margin-top: 5px;
+		}
+		/* Dynamic Avatar Drawer Elements */
+		#player {
+			--avatar-canvas-width: 25; /* document viewport width percentage. */
+			outline: 1px #111 solid;
+			
+			--avatar-canvas-scale: 1; /* fraction. Has no effect on bounding box. */
+			width: var(--avatar-canvas-width)vw !important;
+			
+			/* This is where you choose between pixel height, and a height based on aspect ratio. */
+			/* - Be careful if altering avatar-canvas-height. See the evaluateCSSCalc function for details. */
+			
+			/* pixel height system */
+/*			--avatar-canvas-height: 512; /* applies in pixels */
+/*			height: calc(var(--avatar-canvas-height) * 1px) !important; /* Affects the bounding box of the player canvas */
+			
+			/* aspect ratio height system */
+			/* - you shouldn't need to alter the code here unless (un)commenting or erasing. */
+			--avatar-canvas-height: calc(var(--avatar-canvas-width) * 1vw / 0.75); /* Applies in pixels. Last value is aspect ratio. */
+			height: var(--avatar-canvas-height) !important; /* Affects the bounding box of the player canvas */
+		}
+		[id^="player"] {
+			/* Makes the canvas anchored to the webpage, instead of the viewport. */
+			position: relative;
+		}
+		[id^="player"][style*="visibility: hidden"] {
+			/* Disables effects on scrolling for hidden elements from the Dynamic Avatar Drawer. */
+			display: none;
+		}
+	</style>
+</head>
+<body>
+	<div id="container-main">
+		<div id="left-column" class="column-main">
+			<div class="bottom-spacer container-centering">
+				<span>
+					<button id="backButton" class="dark-button" aria-label="Go back">◄</button>
+					<button id="forwardButton" class="dark-button" aria-label="Go forward">►</button>
+				</span>
+			</div>
+			<button id="redrawAvatarButton" class="dark-button bottom-spacer">Redraw Avatar</button>
+			<div id="player"></div> <!-- Dynamic Avatar Drawer -->
+			<br>
+			<div class="container-centering">
+				<div id="grid" class="container-hideable"></div>
+				<div class="container-hideable">
+					<button id="upButton" class="dark-button bottom-spacer" aria-label="Move up">▲</button>
+				</div>
+				<div class="container-hideable">
+					<button id="leftButton" class="dark-button" aria-label="Move left">◄</button>
+					<button id="downButton" class="dark-button" aria-label="Move down">▼</button>
+					<button id="rightButton" class="dark-button" aria-label="Move right">►</button>
+				</div>
+				<p class="container-hideable" style="font-size: 10px;">You can also use WSAD to navigate the grid.</p>
+			</div>
+			<br>
+			<div>
+				<h4>Save Game:</h4>
+				<button onclick="downloadGameStateFile(gameState)" class="dark-button bottom-spacer">Download Game State</button><br>
+				<h4>Load Game:</h4>
+				<input type="file" id="fileInputUpload" style="display: none;" />
+				<label for="fileInputUpload" class="dark-button">Upload Game State</label><br>
+				<h4 class="top-spacer">Adjust Width for Left Pane:</h4><br>
+				<input type="number" id="widthInput" placeholder="%" style="width: 32px;"/>
+				<button onclick="adjustWidth()" class="dark-button bottom-spacer">Set Width</button>
+			</div>
+		</div>
+		
+		<div id="right-column" class="column-main">Default right pane content.</div>
+	</div>
+	<script>
+		// Constants for grid dimensions and game states
+		const root = document.documentElement; 
+		const GRID_WIDTH = getComputedStyle(root)
+			.getPropertyValue('--navigation-grid--grid-width')
+			.trim()
+			.split(',')
+			.map(Number);
+		
+		const GRID_HEIGHT = getComputedStyle(root)
+			.getPropertyValue('--navigation-grid--grid-height')
+			.trim()
+			.split(',')
+			.map(Number);
+		
+		const MAX_HISTORY_SIZE = 20; // Maximum size for game state history
+		const CELL_SIZE = 10; // Size of each cell in pixels
+		const rightColumn = document.getElementById('right-column');
+		const originalConsoleLog = console.log; // Dynamic Avatar Drawer
+
+		// Wall information for multiple datasets (can be expanded as needed.)
+		let areaWalls = [
+			[ // Homepage (Dataset 1)
+				[ // Row 1
+					{ up: 0, down: 0, left: 0, right: 0 }
+				]
+			],
+			[ // CharGen (Dataset 2)
+				[ // Row 1
+					{ up: 0, down: 0, left: 0, right: 0 }
+				]
+			],
+			[ // Area 1 (Dataset 3)
+				[ // Row 1
+					{ up: 0, down: 2, left: 0, right: 0 },
+					{ up: 0, down: 2, left: 0, right: 0 },
+					{ up: 0, down: 2, left: 0, right: 0 },
+					{ up: 0, down: 2, left: 0, right: 0 },
+					{ up: 0, down: 2, left: 0, right: 0 }
+				],
+				[ // Row 2
+					{ up: 2, down: 2, left: 0, right: 1 },
+					{ up: 2, down: 2, left: 1, right: 1 },
+					{ up: 2, down: 2, left: 1, right: 1 },
+					{ up: 2, down: 2, left: 1, right: 1 },
+					{ up: 2, down: 2, left: 1, right: 0 }
+				],
+				[ // Row 3
+					{ up: 2, down: 0, left: 0, right: 0 },
+					{ up: 2, down: 0, left: 0, right: 0 },
+					{ up: 2, down: 0, left: 0, right: 0 },
+					{ up: 2, down: 0, left: 0, right: 0 },
+					{ up: 2, down: 0, left: 0, right: 0 }
+				]
+			],
+			// You can add more sets of data here
+		];
+
+		// Right column content for multiple datasets (can be expanded as needed.)
+		let rightColumnContent = [
+			{ // Homepage (Dataset 1)
+				'0,0': '<p>Welcome!<br>This is an example!</p><a href="javascript:void(0);" onclick="switchDataset(1)">New Game</a>'
+			},
+			{ // CharGen (Dataset 2)
+				'0,0': '<p>Charactor Generation!</p><a href="javascript:void(0);" onclick="switchDataset(2)">Game Start</a><br><a href="javascript:void(0);" onclick="switchDataset(0)">Back To Menu</a>'
+			},
+			{ // Area 1 (Dataset 3)
+				'0,0': '<p>New content with <strong>HTML</strong> elements!</p>',
+				'0,1': '<p>This is content for cell (0,1).</p>',
+				'0,2': '<p>This is content for cell (0,2).</p>',
+				'1,0': '<p>This is content for cell (1,0).</p>',
+				'1,1': '<p>This is content for cell (1,1).</p>',
+				'1,2': '<p>This is content for cell (1,2).</p>',
+				'2,0': '<p>This is content for cell (2,0).</p>',
+				'2,1': '<p>This is content for cell (2,1).</p>',
+				'2,2': '<p>This is content for cell (2,2).</p>',
+				// Add more cells as needed
+			},
+			// You can add more datasets here
+		];
+
+		// Game state variables
+		let currentRow = 0;
+		let currentCol = 0;
+		let previousRow = currentRow; 
+		let previousCol = currentCol; 
+		let currentDatasetIndex = 0;
+		let currentHistorySlot = 0;
+		let gameState = [currentDatasetIndex, currentCol, currentRow];
+		let gameStateHistory = [[...gameState]];
+
+		// Clamp function to restrict values within a range
+		function clamp(value, min, max) {
+			return Math.max(min, Math.min(max, value));
+		}
+		
+		// Update button states based on history
+		function updateButtonStates() {
+			document.getElementById('backButton').disabled = currentHistorySlot <= 0;
+			document.getElementById('forwardButton').disabled = currentHistorySlot >= gameStateHistory.length - 1;
+		}
+
+		// Reset the grid based on the current dataset
+		function resetGrid() {
+			const gridElement = document.getElementById('grid');
+			gridElement.innerHTML = ''; // Clear existing grid
+
+			// Clamp current row and column within bounds
+			currentRow = clamp(currentRow, 0, GRID_HEIGHT[currentDatasetIndex] - 1);
+			currentCol = clamp(currentCol, 0, GRID_WIDTH[currentDatasetIndex] - 1);
+
+			// Set grid dimensions
+			gridElement.style.gridTemplateColumns = `repeat(${GRID_WIDTH[currentDatasetIndex]}, ${CELL_SIZE}px)`;
+			gridElement.style.gridTemplateRows = `repeat(${GRID_HEIGHT[currentDatasetIndex]}, ${CELL_SIZE}px)`;
+
+			// Create grid cells
+			for (let row = 0; row < GRID_HEIGHT[currentDatasetIndex]; row++) {
+				for (let col = 0; col < GRID_WIDTH[currentDatasetIndex]; col++) {
+					const cell = document.createElement('div');
+					cell.className = 'cell';
+					cell.id = `cell-${row}-${col}`;
+					gridElement.appendChild(cell);
+				}
+				gridElement.appendChild(document.createElement('br')); // Line break after each row
+			}
+
+			updateGrid(); // Update the grid display
+			checkGridSize(); // Check and update button visibility
+		}
+
+		// Update the right column based on current position
+		function updateRightColumn() {
+			currentRow = clamp(currentRow, 0, GRID_HEIGHT[currentDatasetIndex] - 1);
+			currentCol = clamp(currentCol, 0, GRID_WIDTH[currentDatasetIndex] - 1);
+			
+			const key = `${currentRow},${currentCol}`;
+			const content = rightColumnContent[currentDatasetIndex][key] || `No content for key: ${key}`;//'No content.';
+			rightColumn.innerHTML = content; // Update the right column with content
+		}
+
+		// Function to handle back button functionality
+		function handleBackButton() {
+			if (currentHistorySlot > 0) {
+				currentHistorySlot--; // Move back in history
+				loadGameState(currentHistorySlot, false); // Load previous game state
+				updateGrid(); // Update the grid display
+			}
+			updateButtonStates(); // Update button states after action
+		}
+
+		// Function to handle forward button functionality
+		function handleForwardButton() {
+			if (currentHistorySlot < gameStateHistory.length - 1) {
+				currentHistorySlot++; // Move forward in history
+				loadGameState(currentHistorySlot, false); // Load next game state
+				updateGrid(); // Update the grid display
+			}
+			updateButtonStates(); // Update button states after action
+		}
+
+		// Load game state from history
+		function loadGameState(slot, newState = true) {
+			if (slot >= 0 && slot < gameStateHistory.length) {
+				const gameState = gameStateHistory[slot];
+				currentCol = gameState[1];
+				currentRow = gameState[2];
+				switchDataset(gameState[0], newState); // Switch dataset without adding a new state
+			} else {
+				console.error("Invalid slot:", slot);
+			}
+		}
+
+		// Function to switch datasets
+		function switchDataset(newIndex, addState = true) {
+			if (currentDatasetIndex !== newIndex) { // Only switch if it's a different dataset
+				currentDatasetIndex = newIndex; // Switch to the new dataset
+				gameState[0] = newIndex;
+				if (addState) {
+					addGameState(gameState); // Autosave only when switching datasets if addState is true
+				}
+				resetGrid(); // Reset the grid to reflect the new dataset
+			}
+		}
+
+		// Function to add game state to history
+		function addGameState(gameState) {
+			// Check if the current state is the same as the last one
+			if (gameStateHistory.length > 0 && 
+				JSON.stringify(gameStateHistory[gameStateHistory.length - 1]) === JSON.stringify(gameState)) {
+				return; // Skip adding if it's the same
+			}
+
+			// If we're not at the end of the history, remove future states
+			if (currentHistorySlot < gameStateHistory.length - 1) {
+				gameStateHistory = gameStateHistory.slice(0, currentHistorySlot + 1);
+			}
+
+			gameStateHistory.push([...gameState]); // Add the new game state to the history
+			currentHistorySlot++; // Move to the new current slot
+
+			// Check if the array exceeds the maximum size
+			if (gameStateHistory.length > MAX_HISTORY_SIZE) {
+				gameStateHistory.shift(); // Remove the oldest game state
+				currentHistorySlot--; // Adjust the current slot index
+			}
+
+			updateButtonStates(); // Update button states after adding a game state
+		}
+
+		// Function to handle key presses
+		function handleKeyPress(event) {
+			switch (event.key) {
+				case 'w':
+				case 'W':
+					move('up');
+					break;
+				case 's':
+				case 'S':
+					move('down');
+					break;
+				case 'a':
+				case 'A':
+					move('left');
+					break;
+				case 'd':
+				case 'D':
+					move('right');
+					break;
+			}
+		}
+
+		// Function to move the active cell
+		function move(direction) {
+			const currentDirections = areaWalls[currentDatasetIndex][currentRow][currentCol];
+			switch (direction) {
+				case 'up':
+					if (currentDirections.up === 1 || currentDirections.up === 2) {
+						if (currentRow > 0) currentRow--;
+					}
+					break;
+				case 'down':
+					if (currentDirections.down === 1 || currentDirections.down === 2) {
+						if (currentRow < GRID_HEIGHT[currentDatasetIndex] - 1) currentRow++;
+					}
+					break;
+				case 'left':
+					if (currentDirections.left === 1 || currentDirections.left === 2) {
+						if (currentCol > 0) currentCol--;
+					}
+					break;
+				case 'right':
+					if (currentDirections.right === 1 || currentDirections.right === 2) {
+						if (currentCol < GRID_WIDTH[currentDatasetIndex] - 1) currentCol++;
+					}
+					break;
+			}
+			gameState[1] = currentCol;
+			gameState[2] = currentRow;
+			addGameState(gameState); // Autosave
+			updateGrid();
+		}
+
+		// Update the grid display
+		function updateGrid() {
+			const cells = document.querySelectorAll('.cell');
+
+			// Remove the active-cell class from the previous cell
+			const previousActiveCell = document.getElementById(`cell-${previousRow}-${previousCol}`);
+			if (previousActiveCell) {
+				previousActiveCell.classList.remove('active-cell');
+			}
+
+			// Add active-cell class to the current cell
+			const activeCell = document.getElementById(`cell-${currentRow}-${currentCol}`);
+			if (activeCell) {
+				activeCell.classList.add('active-cell');
+			}
+
+			// Update previousRow and previousCol to the current position
+			previousRow = currentRow;
+			previousCol = currentCol;
+
+			cells.forEach((cell, index) => {
+				const currentWidth = GRID_WIDTH[currentDatasetIndex];
+				const row = Math.floor(index / currentWidth); // Row index
+				const col = index % currentWidth; // Column index
+
+				// Check if the row and col are within bounds of the areaWalls array
+				if (row >= areaWalls[currentDatasetIndex].length || col >= areaWalls[currentDatasetIndex][row].length) {
+					return; // Skip this cell if indices are out of bounds
+				}
+
+				const currentDirections = areaWalls[currentDatasetIndex][row][col]; // Get the areaWalls for the current cell
+
+				// Set borders based on areaWalls
+				const borderColor = '#555'; // Define the border color
+				const borderWidth = '1px';  // Define the border width
+				cell.style.borderTop = currentDirections.up === 2 ? `${borderWidth} dashed ${borderColor}` : 
+										(currentDirections.up === 1 ? `${borderWidth} solid transparent` : 
+										`${borderWidth} solid ${borderColor}`);
+
+				cell.style.borderBottom = currentDirections.down === 2 ? `${borderWidth} dashed ${borderColor}` : 
+										(currentDirections.down === 1 ? `${borderWidth} solid transparent` : 
+										`${borderWidth} solid ${borderColor}`);
+
+				cell.style.borderLeft = currentDirections.left === 2 ? `${borderWidth} dashed ${borderColor}` : 
+										(currentDirections.left === 1 ? `${borderWidth} solid transparent` : 
+										`${borderWidth} solid ${borderColor}`);
+
+				cell.style.borderRight = currentDirections.right === 2 ? `${borderWidth} dashed ${borderColor}` : 
+										(currentDirections.right === 1 ? `${borderWidth} solid transparent` : 
+										`${borderWidth} solid ${borderColor}`);
+			});
+
+			updateRightColumn(); // Update the right column content
+		}
+
+		// Upload game state from a file
+		function loadGameStateFromFile(event) {
+			const file = event.target.files[0]; // Get the uploaded file
+			const reader = new FileReader(); // Create a FileReader to read the file
+			reader.onload = (e) => {
+				const rawData = e.target.result; // Get the file content
+				const gameState = rawData.split('|'); // Split the raw data back into an array
+				currentCol = gameState[1];
+				currentRow = gameState[2];
+				switchDataset(gameState[0]); // Switch to the dataset from the game state
+			};
+			reader.readAsText(file); // Read the file as text
+		}
+		
+		// download game state as a file
+		function downloadGameStateFile(values) {
+			const rawData = values.join('|'); // Join the values into a single string
+			const blob = new Blob([rawData], { type: 'text/plain' }); // Create a Blob
+			const url = URL.createObjectURL(blob); // Create a URL for the Blob
+			const a = document.createElement('a'); // Create a link element
+			a.href = url;
+			a.download = 'gameState.txt'; // Set the file name
+			document.body.appendChild(a);
+			a.click(); // Programmatically click the link to trigger the download
+			document.body.removeChild(a); // Remove the link from the document
+		}
+
+		// Adjusts the width of the left column (and consequently, the right column as well.).
+		function adjustWidth() {
+			const width = document.getElementById('widthInput').value;
+			const leftColumn = document.getElementById('left-column');
+			const rightColumn = document.getElementById('right-column');
+			const playerElement = document.getElementById('player');
+			
+			if (width >= 2 && width <= 98) {
+				leftColumn.style.width = width + '%';
+				rightColumn.style.width = (100 - width) + '%';
+				playerElement.style.setProperty('--avatar-canvas-width', width - 2); // Dynamic Avatar Drawer
+				redrawAvatar(); // Dynamic Avatar Drawer
+			} else {
+				alert('Please enter a value between 2 and 98.');
+			}
+		}
+
+		// Check grid size for updating the visibility of button containers
+		function checkGridSize() {
+			const buttonContainersHidable = document.querySelectorAll('.container-hideable');
+			buttonContainersHidable.forEach(container => {
+				if (GRID_WIDTH[currentDatasetIndex] === 1 && GRID_HEIGHT[currentDatasetIndex] === 1) container.style.display = 'none'; // Hide the container
+				else container.style.display = 'inline-block'; // Use flex to maintain layout
+				
+				void container.offsetHeight; // Reading this property forces a reflow
+			});
+		}
+
+		// Initialize the game when the window loads
+		window.onload = function() {
+			// Set up event listeners
+			document.getElementById('backButton').addEventListener('click', handleBackButton);
+			document.getElementById('forwardButton').addEventListener('click', handleForwardButton);
+			document.getElementById('upButton').addEventListener('click', () => move('up'));
+			document.getElementById('downButton').addEventListener('click', () => move('down'));
+			document.getElementById('leftButton').addEventListener('click', () => move('left'));
+			document.getElementById('rightButton').addEventListener('click', () => move('right'));
+			document.getElementById('fileInputUpload').addEventListener('change', loadGameStateFromFile);
+			document.getElementById('redrawAvatarButton').addEventListener('click', redrawAvatar); // Dynamic Avatar Drawer
+			window.addEventListener('resize', redrawAvatar); // Call the redrawAvatar function when the viewport size changes
+			
+			// Initialize the areaWalls array (Default layout)
+			areaWalls[currentDatasetIndex] = Array.from({ length: GRID_HEIGHT[currentDatasetIndex] }, () => 
+				Array.from({ length: GRID_WIDTH[currentDatasetIndex] }, () => ({ up: 0, down: 0, left: 0, right: 0 }))
+			);
+
+			const gridElement = document.getElementById('grid');
+
+			// Set the grid template columns and rows dynamically
+			gridElement.style.gridTemplateColumns = `repeat(${GRID_WIDTH[currentDatasetIndex]}, ${CELL_SIZE}px)`;
+			gridElement.style.gridTemplateRows = `repeat(${GRID_HEIGHT[currentDatasetIndex]}, ${CELL_SIZE}px)`;
+
+			// Create the grid cells
+			for (let row = 0; row < GRID_HEIGHT[currentDatasetIndex]; row++) {
+				for (let col = 0; col < GRID_WIDTH[currentDatasetIndex]; col++) {
+					const cell = document.createElement('div');
+					cell.className = 'cell';
+					cell.id = `cell-${row}-${col}`;
+					gridElement.appendChild(cell);
+				}
+			}
+			updateGrid(); // Update the grid display
+			updateButtonStates(); // Set initial button states
+			resetGrid(); // Reset the grid to initialize
+			// Load the Dynamic Avatar Drawer library
+			da.load().then(function() {
+				redrawAvatar(); // Call the function to draw the avatar
+			});
+		};
+
+		// All functions below this point are added due to adding the Dynamic Avatar Drawer.
+
+		function redrawAvatar() {
+			// Note: In this code block, width and height both tell the canvas what its internal dimensions are.
+
+			// Get the player element
+			const playerElement = document.getElementById('player');
+
+			// Retrieve computed styles
+			const computedStyles = getComputedStyle(playerElement);
+			const documentWidth = document.documentElement.getBoundingClientRect().width;
+
+			// Extract and trim the necessary CSS properties
+			const avatarCanvasWidth = parseFloat(computedStyles.getPropertyValue('--avatar-canvas-width').trim());
+			const avatarCanvasHeight = evaluateCSSCalc(computedStyles.getPropertyValue('--avatar-canvas-height').trim());
+			const avatarCanvasScale = parseFloat(computedStyles.getPropertyValue('--avatar-canvas-scale').trim());
+			let width = (avatarCanvasWidth / 100) * documentWidth * avatarCanvasScale - 2;
+
+			// Set the canvas dimensions
+			var canvasGroup = da.getCanvasGroup("player", {
+				width: width,
+				height: evaluateCSSCalc(avatarCanvasHeight) * avatarCanvasScale,
+				border: "none",
+			});
+
+			// EXAMPLE creating a specific Player object (either+ the PC or an NPC)
+			var PC = new da.Player({
+				//name : "HAL 9000",
+				//occupation : "Pod Bay Opener",
+				// provide specific values here to override the default ones set
+				//age : 26,
+				fem : 11,
+				//sub : 2,
+
+				// base physical dimensions
+				basedim        : {
+					areolaSize    : 14.923766816143496,
+					armThickness  : 58.468958260259555,
+					armLength     : 45,
+					breastSize    : 9.974887892376682,
+					buttFullness  : 13.019992984917572,
+					chinWidth     : 63.335671694142405,
+					eyelashLength : 3.0305156085584004,
+					eyeSize       : 13.019992984917572,
+					faceFem       : 40,
+					faceLength    : 212.32549982462294,
+					faceWidth     : 82.74465099964925,
+					hairLength    : 37.03963521571379,
+					hairStyle     : 4,
+					hairHue       : 0,
+					hairSaturation: 19.081024202034374,
+					hairLightness : 11.224131883549632,
+					handSize      : 118.9757979656261,
+					height        : 163.65022421524662, // around 190 max
+					hipWidth      : 110.85584005612066,
+					legFem        : 39.95790950543669,
+					legFullness   : 4.489652753419852,
+					legLength     : 98.79340582251841,
+					lipSize       : 18.85654156436338,
+					lowerMuscle   : 22.448263767099263,
+					neckLength    : 72.73237460540162,
+					neckWidth     : 39.489652753419854,
+					penisSize     : 50,
+					shoulderWidth : 64.28699551569507,
+					skin          : -1.9291476674850934,
+					testicleSize  : 60,
+					upperMuscle   : 0,
+					vaginaSize    : 40,
+					waistWidth    : 102.32549982462294,
+				},
+				decorativeParts: [
+					da.Part.create(da.BeautyMark, {side: null}), // not sure how to use this, or what it is.
+				],
+				// overriding clothing (default to simple red underwear)
+				clothes: [
+					da.Clothes.create(da.Bra, da.Materials.sheerFabric),
+					da.Clothes.create(da.Panties, da.Materials.sheerFabric)
+				],
+			});
+
+			// Define view configuration options for drawing
+			var viewConfig = {
+				//nameColor: "#cf9fcc",
+				//genderColor: "#de8cde",
+				//heightColor: "#aaaaaa",
+				//heightBarColor: "#aaaaaa",
+				printAdditionalInfo: false,
+				printHeight: false,
+				renderShoeSideView: false,
+				printVitals: false,
+				offsetX: -50, // -50 is centered
+				offsetY: 0
+			};
+
+			// Draw the player on the canvas
+			da.draw(canvasGroup, PC, viewConfig);
+		}
+
+		// evaluateCSSCalc function
+		// This function evaluates a small and select set of CSS expressions.
+		// It can handle viewport width (vw) values, basic math operations, and simple numeric values, including negative values.
+		function evaluateCSSCalc(calcString) {
+			// Trim whitespace from the input (support for numbers added with String())
+			calcString = String(calcString).trim();
+
+			// Check if the input is a simple numeric value (including negative values)
+			const simpleValueMatch = calcString.match(/^(-?\d+(\.\d+)?)$/);
+			if (simpleValueMatch) {
+				return parseFloat(simpleValueMatch[1]); // Return the numeric value
+			}
+
+			// Check if the input is a viewport width value (e.g., "8vw" or "-8vw")
+			const vwMatch = calcString.match(/^(-?\d+(\.\d+)?)vw$/);
+			if (vwMatch) {
+				const widthPercentage = parseFloat(vwMatch[1]); // e.g., -8
+				const viewportWidth = window.innerWidth; // Get the current viewport width
+				return (widthPercentage / 100) * viewportWidth; // Calculate the value in pixels
+			}
+
+			// Extract width in vw and aspect ratio from calc() expression
+			const widthMatch = calcString.match(/(-?\d+(\.\d+)?)\s*\*\s*1vw/);
+			const aspectRatioMatch = calcString.match(/\/\s*(-?\d+(\.\d+)?)/);
+
+			if (widthMatch && aspectRatioMatch) {
+				const widthPercentage = parseFloat(widthMatch[1]); // e.g., -25
+				const aspectRatio = parseFloat(aspectRatioMatch[1]); // e.g., -0.75
+
+				// Calculate the height in pixels based on the current viewport width
+				const viewportWidth = window.innerWidth; // Get the current viewport width
+				const computedHeight = (widthPercentage * viewportWidth / 100) / aspectRatio; // Calculate height in pixels
+
+				return computedHeight;
+			}
+
+			return 0; // Return 0 if parsing fails
+		}
+
+		// Override console.log to filter out the specific message: "created avatar undefined"
+		console.log = function(message) {
+			// Check if the message matches "created avatar undefined"
+			if (message === "created avatar undefined") {
+				return; // Ignore this log
+			}
+			// Otherwise, call the original console.log
+			originalConsoleLog.apply(console, arguments);
+		};
+	</script>
+</body>
+</html>
