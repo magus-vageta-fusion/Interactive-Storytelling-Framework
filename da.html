@@ -569,6 +569,7 @@ da.js was never changed.
 			document.getElementById('fileInputUpload').addEventListener('change', loadGameStateFromFile);
 			document.getElementById('redrawAvatarButton').addEventListener('click', redrawAvatar); // Dynamic Avatar Drawer
 			window.addEventListener('resize', redrawAvatar); // Call the redrawAvatar function when the viewport size changes
+			document.addEventListener('keydown', handleKeyPress);
 			
 			// Initialize the areaWalls array (Default layout)
 			areaWalls[currentDatasetIndex] = Array.from({ length: GRID_HEIGHT[currentDatasetIndex] }, () => 
@@ -748,3 +749,4 @@ da.js was never changed.
 	</script>
 </body>
 </html>
+
